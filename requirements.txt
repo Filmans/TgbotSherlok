@@ -2,6 +2,7 @@ pytelegrambotAPI
 opencv-python
 moviepy
 requests
-easygui
+subprocess
 pillow
 pyaudio
+webbrowser
