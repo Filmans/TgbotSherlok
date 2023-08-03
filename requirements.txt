@@ -1,0 +1,7 @@
+pytelegrambotAPI
+opencv-python
+moviepy
+requests
+easygui
+pillow
+pyaudio
