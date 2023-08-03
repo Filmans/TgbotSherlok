@@ -1,0 +1,1 @@
+WScript.CreateObject("WScript.Shell").Run "cmd /c ""py YOUR_PATH_HERE""",0,true
