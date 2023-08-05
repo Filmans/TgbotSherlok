@@ -271,7 +271,7 @@ def execute_command(message: Message):
 
 
 def ask_file_path(message: Message):
-    bot.send_message(message.chat.id, 'Введите путь для сохранения файла на компьютере:')
+    bot.send_message(message.chat.id, 'Введите путь для сохранения файла на компьютере (можете посмотреть доступные директории в командной строке):')
     bot.register_next_step_handler(message, download_file)
 
 def download_file(message: Message):
